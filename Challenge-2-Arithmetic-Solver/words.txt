@@ -1,0 +1,15 @@
+absolutely
+absolute
+active
+activist
+activity
+action
+actor
+actual
+apple
+application
+computer
+python
+programming
+developer
+development
