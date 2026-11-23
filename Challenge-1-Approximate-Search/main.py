@@ -1,132 +1,93 @@
-
-import ast
-import operator
-import re
+import os
 
 
-# Supported mathematical operators
-OPERATORS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-    ast.Pow: operator.pow,
-    ast.USub: operator.neg,
-    ast.UAdd: operator.pos
-}
+def levenshtein(s1, s2):
+    """Calculate the minimum edit distance between two strings."""
+    m, n = len(s1), len(s2)
+    dp = [[0] * (n + 1) for _ in range(m + 1)]
+
+    for i in range(m + 1):
+        dp[i][0] = i
+    for j in range(n + 1):
+        dp[0][j] = j
+
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            cost = 0 if s1[i - 1] == s2[j - 1] else 1
+            dp[i][j] = min(
+                dp[i - 1][j] + 1,        # Deletion
+                dp[i][j - 1] + 1,        # Insertion
+                dp[i - 1][j - 1] + cost  # Substitution
+            )
+    return dp[m][n]
 
 
-def evaluate(node):
-
-    if isinstance(node, ast.Constant):
-        if type(node.value) in (int, float):
-            return node.value
-        raise ValueError("Invalid number")
-
-    elif isinstance(node, ast.BinOp):
-        op_type = type(node.op)
-
-        if op_type not in OPERATORS:
-            raise ValueError("Unsupported operator")
-
-        left = evaluate(node.left)
-        right = evaluate(node.right)
-
-        return OPERATORS[op_type](left, right)
-
-    elif isinstance(node, ast.UnaryOp):
-        op_type = type(node.op)
-
-        if op_type not in OPERATORS:
-            raise ValueError("Unsupported operator")
-
-        return OPERATORS[op_type](evaluate(node.operand))
-
-    else:
-        raise ValueError("Invalid expression")
+def is_subsequence(query, word):
+    """Check if all characters of query appear in word in order."""
+    it = iter(word)
+    return all(char in it for char in query)
 
 
-def solve_expression(expression):
-
-    # Convert alternative minus signs to standard minus
-    expression = expression.replace("–", "-").replace("−", "-")
-
-    # Convert exponentiation into Python syntax
-    expression = expression.replace("^", "**")
-
-    # Convert square and curly brackets into parentheses
-    expression = expression.replace("[", "(").replace("]", ")")
-    expression = expression.replace("{", "(").replace("}", ")")
-
-    # Remove spaces
-    expression = expression.replace(" ", "")
-
-    # Add implicit multiplication:
-    # Example: (2+3)(4+5) -> (2+3)*(4+5)
-    expression = re.sub(r"(\))(\()", r"\1*\2", expression)
-    expression = re.sub(r"(\d)(\()", r"\1*\2", expression)
-    expression = re.sub(r"(\))(\d)", r"\1*\2", expression)
-
-    # Parse expression safely
-    tree = ast.parse(expression, mode="eval")
-
-    result = evaluate(tree.body)
-
-    return result
-
-
-def format_result(result):
-
-    if isinstance(result, float) and result.is_integer():
-        return str(int(result))
-
-    return str(result)
-
-
-def process_file(input_file, output_file):
+def load_words(filename="words.txt"):
+    """Read words from a text file and store unique words in memory."""
+    # Search in current directory, then script directory
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path = filename if os.path.isfile(filename) else os.path.join(script_dir, filename)
 
     try:
-        with open(input_file, "r", encoding="utf-8") as file:
-            lines = file.readlines()
-
-        output_lines = []
-
-        for line in lines:
-
-            line = line.strip()
-
-            if not line:
-                continue
-
-            try:
-                # Remove existing equals sign
-                expression = line.split("=")[0].strip()
-
-                answer = solve_expression(expression)
-
-                output_lines.append(
-                    f"{expression} = {format_result(answer)}"
-                )
-
-            except Exception as error:
-                output_lines.append(
-                    f"{line} ERROR: {error}"
-                )
-
-        # Generate output file
-        with open(output_file, "w", encoding="utf-8") as file:
-            file.write("\n".join(output_lines))
-
-        print("Calculation completed successfully!")
-        print(f"Output saved to: {output_file}")
-
+        with open(path, "r", encoding="utf-8") as f:
+            # Split by whitespace, convert to lowercase, and remove duplicates
+            return list(set(f.read().lower().split()))
     except FileNotFoundError:
-        print("Error: Input file not found!")
+        print(f"Error: '{filename}' not found.")
+        return []
+
+
+def approximate_search(query, words, k=3):
+    """Find the top-k similar words for a given query."""
+    query = query.lower()
+    matches = []
+
+    for word in words:
+        dist = levenshtein(query, word)
+        sub = is_subsequence(query, word)
+
+        # Match if query is a subsequence (abbreviation) or has low edit distance (typo)
+        if sub or dist <= 2:
+            matches.append((sub, dist, len(word), word))
+
+    # Sort: subsequence first, then lowest edit distance, then shortest length
+    matches.sort(key=lambda x: (not x[0], x[1], x[2], x[3]))
+
+    return [item[3] for item in matches[:k]]
+
+
+def main():
+    words = load_words("words.txt")
+    if not words:
+        return
+
+    print("===== APPROXIMATE SEARCH =====")
+    print(f"Loaded {len(words)} words into memory.")
+    print("Type 'exit' to quit.\n")
+
+    while True:
+        query = input("Input >> ").strip()
+
+        if query.lower() == "exit":
+            print("Program terminated.")
+            break
+
+        if not query:
+            continue
+
+        results = approximate_search(query, words, k=3)
+
+        if results:
+            print("Output >>", ", ".join(results))
+        else:
+            print("Output >> No similar words found.")
 
 
 if __name__ == "__main__":
-
-    input_file = "input.txt"
-    output_file = "output.txt"
-
-    process_file(input_file, output_file)
+    main()
